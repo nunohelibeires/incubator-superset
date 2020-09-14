@@ -17,20 +17,22 @@
 import copy
 import logging
 import math
-import pickle as pkl
 from datetime import datetime, timedelta
 from typing import Any, ClassVar, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
+from flask_babel import gettext as _
 
 from superset import app, cache, db, security_manager
 from superset.common.query_object import QueryObject
 from superset.connectors.base.models import BaseDatasource
 from superset.connectors.connector_registry import ConnectorRegistry
+from superset.exceptions import QueryObjectValidationError
 from superset.stats_logger import BaseStatsLogger
 from superset.utils import core as utils
 from superset.utils.core import DTTM_ALIAS
+from superset.viz import set_and_log_cache
 
 config = app.config
 stats_logger: BaseStatsLogger = config["STATS_LOGGER"]
@@ -112,8 +114,7 @@ class QueryContext:
                 self.df_metrics_to_num(df, query_object)
 
             df.replace([np.inf, -np.inf], np.nan)
-
-        df = query_object.exec_post_processing(df)
+            df = query_object.exec_post_processing(df)
 
         return {
             "query": result.query,
@@ -161,10 +162,7 @@ class QueryContext:
         df = payload["df"]
         status = payload["status"]
         if status != utils.QueryStatus.FAILED:
-            if df.empty:
-                payload["error"] = "No data"
-            else:
-                payload["data"] = self.get_data(df)
+            payload["data"] = self.get_data(df)
         del payload["df"]
         if self.result_type == utils.ChartDataResultType.RESULTS:
             return {"data": payload["data"]}
@@ -225,7 +223,6 @@ class QueryContext:
             if cache_value:
                 stats_logger.incr("loading_from_cache")
                 try:
-                    cache_value = pkl.loads(cache_value)
                     df = cache_value["df"]
                     query = cache_value["query"]
                     status = utils.QueryStatus.SUCCESS
@@ -240,6 +237,21 @@ class QueryContext:
 
         if query_obj and not is_loaded:
             try:
+                invalid_columns = [
+                    col
+                    for col in query_obj.columns
+                    + query_obj.groupby
+                    + [flt["col"] for flt in query_obj.filter]
+                    + utils.get_column_names_from_metrics(query_obj.metrics)
+                    if col not in self.datasource.column_names
+                ]
+                if invalid_columns:
+                    raise QueryObjectValidationError(
+                        _(
+                            "Columns missing in datasource: %(invalid_columns)s",
+                            invalid_columns=invalid_columns,
+                        )
+                    )
                 query_result = self.get_query_result(query_obj)
                 status = query_result["status"]
                 query = query_result["query"]
@@ -250,30 +262,25 @@ class QueryContext:
                     if not self.force:
                         stats_logger.incr("loaded_from_source_without_force")
                     is_loaded = True
+            except QueryObjectValidationError as ex:
+                error_message = str(ex)
+                status = utils.QueryStatus.FAILED
             except Exception as ex:  # pylint: disable=broad-except
                 logger.exception(ex)
                 if not error_message:
-                    error_message = "{}".format(ex)
+                    error_message = str(ex)
                 status = utils.QueryStatus.FAILED
                 stacktrace = utils.get_stacktrace()
 
             if is_loaded and cache_key and cache and status != utils.QueryStatus.FAILED:
-                try:
-                    cache_value = dict(dttm=cached_dttm, df=df, query=query)
-                    cache_binary = pkl.dumps(cache_value, protocol=pkl.HIGHEST_PROTOCOL)
-
-                    logger.info(
-                        "Caching %d chars at key %s", len(cache_binary), cache_key
-                    )
-
-                    stats_logger.incr("set_cache_key")
-                    cache.set(cache_key, cache_binary, timeout=self.cache_timeout)
-                except Exception as ex:  # pylint: disable=broad-except
-                    # cache.set call can fail if the backend is down or if
-                    # the key is too large or whatever other reasons
-                    logger.warning("Could not cache key %s", cache_key)
-                    logger.exception(ex)
-                    cache.delete(cache_key)
+                set_and_log_cache(
+                    cache_key,
+                    df,
+                    query,
+                    cached_dttm,
+                    self.cache_timeout,
+                    self.datasource.uid,
+                )
         return {
             "cache_key": cache_key,
             "cached_dttm": cache_value["dttm"] if cache_value is not None else None,
@@ -286,3 +293,12 @@ class QueryContext:
             "stacktrace": stacktrace,
             "rowcount": len(df.index),
         }
+
+    def raise_for_access(self) -> None:
+        """
+        Raise an exception if the user cannot access the resource.
+
+        :raises SupersetSecurityException: If the user cannot access the resource
+        """
+
+        security_manager.raise_for_access(query_context=self)

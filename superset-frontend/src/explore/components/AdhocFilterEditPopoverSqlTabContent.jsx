@@ -25,7 +25,7 @@ import 'brace/theme/github';
 import 'brace/ext/language_tools';
 import { FormGroup } from 'react-bootstrap';
 import Select from 'src/components/Select';
-import { t } from '@superset-ui/translation';
+import { t } from '@superset-ui/core';
 
 import sqlKeywords from '../../SqlLab/utils/sqlKeywords';
 import AdhocFilter, { EXPRESSION_TYPES, CLAUSES } from '../AdhocFilter';
@@ -144,7 +144,7 @@ export default class AdhocFilterEditPopoverSqlTabContent extends React.Component
             ref={this.handleAceEditorRef}
             mode="sql"
             theme="github"
-            height={height - 100 + 'px'}
+            height={`${height - 100}px`}
             onChange={this.onSqlExpressionChange}
             width="100%"
             showGutter={false}

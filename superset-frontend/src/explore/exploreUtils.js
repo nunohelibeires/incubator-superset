@@ -18,14 +18,13 @@
  */
 /* eslint camelcase: 0 */
 import URI from 'urijs';
-import { SupersetClient } from '@superset-ui/connection';
-import { buildQueryContext } from '@superset-ui/query';
-import { availableDomains } from 'src/utils/hostNamesConfig';
-import { safeStringify } from 'src/utils/safeStringify';
 import {
+  buildQueryContext,
   getChartBuildQueryRegistry,
   getChartMetadataRegistry,
-} from '@superset-ui/chart';
+} from '@superset-ui/core';
+import { availableDomains } from 'src/utils/hostNamesConfig';
+import { safeStringify } from 'src/utils/safeStringify';
 
 const MAX_URL_LENGTH = 8000;
 
@@ -194,11 +193,16 @@ export function getExploreUrl({
 }
 
 export const shouldUseLegacyApi = formData => {
-  const { useLegacyApi } = getChartMetadataRegistry().get(formData.viz_type);
-  return useLegacyApi || false;
+  const vizMetadata = getChartMetadataRegistry().get(formData.viz_type);
+  return vizMetadata ? vizMetadata.useLegacyApi : false;
 };
 
-export const buildV1ChartDataPayload = ({ formData, force }) => {
+export const buildV1ChartDataPayload = ({
+  formData,
+  force,
+  resultFormat,
+  resultType,
+}) => {
   const buildQuery =
     getChartBuildQueryRegistry().get(formData.viz_type) ??
     (buildQueryformData =>
@@ -210,6 +214,8 @@ export const buildV1ChartDataPayload = ({ formData, force }) => {
   return buildQuery({
     ...formData,
     force,
+    result_format: resultFormat,
+    result_type: resultType,
   });
 };
 
@@ -260,13 +266,12 @@ export const exportChart = ({
     payload = formData;
   } else {
     url = '/api/v1/chart/data';
-    const buildQuery = getChartBuildQueryRegistry().get(formData.viz_type);
-    payload = buildQuery({
-      ...formData,
+    payload = buildV1ChartDataPayload({
+      formData,
       force,
+      resultFormat,
+      resultType,
     });
-    payload.result_type = resultType;
-    payload.result_format = resultFormat;
   }
   postForm(url, payload);
 };

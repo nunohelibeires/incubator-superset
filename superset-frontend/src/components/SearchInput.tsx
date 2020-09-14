@@ -16,15 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import styled from '@superset-ui/style';
+import { styled } from '@superset-ui/core';
 import React from 'react';
+import Icon from 'src/components/Icon';
 
-interface Props {
+interface SearchInputProps {
   onSubmit: () => void;
   onClear: () => void;
   value: string;
   onChange: React.EventHandler<React.ChangeEvent<HTMLInputElement>>;
   placeholder?: string;
+  name?: string;
 }
 
 const SearchInputWrapper = styled.div`
@@ -44,32 +46,22 @@ const StyledInput = styled.input`
   }
 `;
 
-const SearchIcon = styled.div`
+const commonStyles = `
   position: absolute;
   z-index: 2;
   display: block;
-  width: 28px;
-  height: 28px;
-  text-align: center;
   cursor: pointer;
-  background-position: 2px 2px;
-  background-image: url('/static/assets/images/icons/search.svg');
-  background-repeat: no-repeat;
+`;
+const SearchIcon = styled(Icon)`
+  ${commonStyles}
+  top: 1px;
+  left: 2px;
 `;
 
-const ClearIcon = styled.div`
-  position: absolute;
-  z-index: 2;
-  display: block;
-  width: 28px;
-  height: 28px;
-  text-align: center;
-  cursor: pointer;
-  right: 2px;
+const ClearIcon = styled(Icon)`
+  ${commonStyles}
+  right: 0px;
   top: 1px;
-  background-position: 2px 2px;
-  background-image: url('/static/assets/images/icons/cancel-x.svg');
-  background-repeat: no-repeat;
 `;
 
 export default function SearchInput({
@@ -77,13 +69,15 @@ export default function SearchInput({
   onClear,
   onSubmit,
   placeholder = 'Search',
+  name,
   value,
-}: Props) {
+}: SearchInputProps) {
   return (
     <SearchInputWrapper>
       <SearchIcon
         data-test="search-submit"
         role="button"
+        name="search"
         onClick={() => onSubmit()}
       />
       <StyledInput
@@ -97,11 +91,13 @@ export default function SearchInput({
         placeholder={placeholder}
         onChange={onChange}
         value={value}
+        name={name}
       />
       {value && (
         <ClearIcon
           data-test="search-clear"
           role="button"
+          name="cancel-x"
           onClick={() => onClear()}
         />
       )}

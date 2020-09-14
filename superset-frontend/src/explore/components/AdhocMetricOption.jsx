@@ -18,9 +18,10 @@
  */
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Label, OverlayTrigger } from 'react-bootstrap';
-import { thresholdScott } from 'd3-array';
+import { OverlayTrigger } from 'react-bootstrap';
+import { withTheme } from '@superset-ui/core';
 
+import Label from 'src/components/Label';
 import AdhocMetricEditPopover from './AdhocMetricEditPopover';
 import AdhocMetric from '../AdhocMetric';
 import columnType from '../propTypes/columnType';
@@ -33,7 +34,7 @@ const propTypes = {
   datasourceType: PropTypes.string,
 };
 
-export default class AdhocMetricOption extends React.PureComponent {
+class AdhocMetricOption extends React.PureComponent {
   constructor(props) {
     super(props);
     this.closeMetricEditOverlay = this.closeMetricEditOverlay.bind(this);
@@ -53,7 +54,7 @@ export default class AdhocMetricOption extends React.PureComponent {
     // once the overlay has been opened, the metric/filter will never be
     // considered new again.
     this.props.adhocMetric.isNew = false;
-    this.setState({ overlayShown: false });
+    this.setState({ overlayShown: true });
   }
 
   onOverlayExited() {
@@ -65,7 +66,7 @@ export default class AdhocMetricOption extends React.PureComponent {
   }
 
   render() {
-    const { adhocMetric } = this.props;
+    const { adhocMetric, theme } = this.props;
     const overlayContent = (
       <AdhocMetricEditPopover
         onResize={this.onPopoverResize}
@@ -74,6 +75,7 @@ export default class AdhocMetricOption extends React.PureComponent {
         onClose={this.closeMetricEditOverlay}
         columns={this.props.columns}
         datasourceType={this.props.datasourceType}
+        theme={theme}
       />
     );
 
@@ -99,7 +101,9 @@ export default class AdhocMetricOption extends React.PureComponent {
           <Label className="option-label adhoc-option">
             {adhocMetric.label}
             <i
-              className={`glyphicon glyphicon-triangle-right adhoc-label-arrow`}
+              className={`fa fa-caret-${
+                this.state.overlayShown ? 'left' : 'right'
+              } adhoc-label-arrow`}
             />
           </Label>
         </OverlayTrigger>
@@ -107,4 +111,7 @@ export default class AdhocMetricOption extends React.PureComponent {
     );
   }
 }
+
+export default withTheme(AdhocMetricOption);
+
 AdhocMetricOption.propTypes = propTypes;

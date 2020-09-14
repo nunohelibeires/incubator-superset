@@ -18,7 +18,7 @@
  */
 import React from 'react';
 import PropTypes from 'prop-types';
-import { t } from '@superset-ui/translation';
+import { t } from '@superset-ui/core';
 
 import getChartIdsFromLayout from '../util/getChartIdsFromLayout';
 import getLayoutComponentFromChartId from '../util/getLayoutComponentFromChartId';
@@ -91,12 +91,15 @@ class Dashboard extends React.PureComponent {
   }
 
   componentDidMount() {
+    const appContainer = document.getElementById('app');
+    const bootstrapData = appContainer?.getAttribute('data-bootstrap') || '';
     const { dashboardState, layout } = this.props;
     const eventData = {
       is_edit_mode: dashboardState.editMode,
       mount_duration: Logger.getTimestamp(),
       is_empty: isDashboardEmpty(layout),
       is_published: dashboardState.isPublished,
+      bootstrap_data_length: bootstrapData.length,
     };
     const directLinkComponentId = getLocationHash();
     if (directLinkComponentId) {

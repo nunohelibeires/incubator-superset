@@ -18,7 +18,7 @@
 """Unit tests for Superset"""
 import imp
 import json
-from typing import Any, Dict, Union, List
+from typing import Any, Dict, Union, List, Optional
 from unittest.mock import Mock, patch
 
 import pandas as pd
@@ -27,7 +27,8 @@ from flask_appbuilder.security.sqla import models as ab_models
 from flask_testing import TestCase
 from sqlalchemy.orm import Session
 
-from tests.test_app import app  # isort:skip
+from tests.test_app import app
+from superset.sql_parse import CtasMethod
 from superset import db, security_manager
 from superset.connectors.base.models import BaseDatasource
 from superset.connectors.druid.models import DruidCluster, DruidDatasource
@@ -43,17 +44,42 @@ from superset.views.base_api import BaseSupersetModelRestApi
 FAKE_DB_NAME = "fake_db_100"
 
 
+def login(client: Any, username: str = "admin", password: str = "general"):
+    resp = get_resp(client, "/login/", data=dict(username=username, password=password))
+    assert "User confirmation needed" not in resp
+
+
+def get_resp(
+    client: Any,
+    url: str,
+    data: Any = None,
+    follow_redirects: bool = True,
+    raise_on_error: bool = True,
+    json_: Optional[str] = None,
+):
+    """Shortcut to get the parsed results while following redirects"""
+    if data:
+        resp = client.post(url, data=data, follow_redirects=follow_redirects)
+    elif json_:
+        resp = client.post(url, json=json_, follow_redirects=follow_redirects)
+    else:
+        resp = client.get(url, follow_redirects=follow_redirects)
+    if raise_on_error and resp.status_code > 400:
+        raise Exception("http request failed with code {}".format(resp.status_code))
+    return resp.data.decode("utf-8")
+
+
 class SupersetTestCase(TestCase):
 
     default_schema_backend_map = {
         "sqlite": "main",
         "mysql": "superset",
         "postgresql": "public",
+        "presto": "default",
+        "hive": "default",
     }
 
-    def __init__(self, *args, **kwargs):
-        super(SupersetTestCase, self).__init__(*args, **kwargs)
-        self.maxDiff = None
+    maxDiff = -1
 
     def create_app(self):
         return app
@@ -75,6 +101,7 @@ class SupersetTestCase(TestCase):
             assert user_to_create
         user_to_create.roles = [security_manager.find_role(r) for r in roles]
         db.session.commit()
+        return user_to_create
 
     @staticmethod
     def create_user(
@@ -145,12 +172,14 @@ class SupersetTestCase(TestCase):
         return obj
 
     def login(self, username="admin", password="general"):
-        resp = self.get_resp("/login/", data=dict(username=username, password=password))
-        self.assertNotIn("User confirmation needed", resp)
+        return login(self.client, username, password)
 
-    def get_slice(self, slice_name: str, session: Session) -> Slice:
+    def get_slice(
+        self, slice_name: str, session: Session, expunge_from_session: bool = True
+    ) -> Slice:
         slc = session.query(Slice).filter_by(slice_name=slice_name).one()
-        session.expunge_all()
+        if expunge_from_session:
+            session.expunge_all()
         return slc
 
     @staticmethod
@@ -186,16 +215,7 @@ class SupersetTestCase(TestCase):
     def get_resp(
         self, url, data=None, follow_redirects=True, raise_on_error=True, json_=None
     ):
-        """Shortcut to get the parsed results while following redirects"""
-        if data:
-            resp = self.client.post(url, data=data, follow_redirects=follow_redirects)
-        elif json_:
-            resp = self.client.post(url, json=json_, follow_redirects=follow_redirects)
-        else:
-            resp = self.client.get(url, follow_redirects=follow_redirects)
-        if raise_on_error and resp.status_code > 400:
-            raise Exception("http request failed with code {}".format(resp.status_code))
-        return resp.data.decode("utf-8")
+        return get_resp(self.client, url, data, follow_redirects, raise_on_error, json_)
 
     def get_json_resp(
         self, url, data=None, follow_redirects=True, raise_on_error=True, json_=None
@@ -259,6 +279,7 @@ class SupersetTestCase(TestCase):
         select_as_cta=False,
         tmp_table_name=None,
         schema=None,
+        ctas_method=CtasMethod.TABLE,
     ):
         if user_name:
             self.logout()
@@ -270,6 +291,7 @@ class SupersetTestCase(TestCase):
             "client_id": client_id,
             "queryLimit": query_limit,
             "sql_editor_id": sql_editor_id,
+            "ctas_method": ctas_method,
         }
         if tmp_table_name:
             json_payload["tmp_table_name"] = tmp_table_name
@@ -312,22 +334,22 @@ class SupersetTestCase(TestCase):
         if database:
             db.session.delete(database)
 
-    def create_fake_presto_db(self):
+    def create_fake_db_for_macros(self):
         self.login(username="admin")
-        database_name = "presto"
+        database_name = "db_for_macros_testing"
         db_id = 200
         return self.get_or_create(
             cls=models.Database,
             criteria={"database_name": database_name},
             session=db.session,
-            sqlalchemy_uri="presto://user@host:8080/hive",
+            sqlalchemy_uri="db_for_macros_testing://user@host:8080/hive",
             id=db_id,
         )
 
-    def delete_fake_presto_db(self):
+    def delete_fake_db_for_macros(self):
         database = (
             db.session.query(Database)
-            .filter(Database.database_name == "presto")
+            .filter(Database.database_name == "db_for_macros_testing")
             .scalar()
         )
         if database:

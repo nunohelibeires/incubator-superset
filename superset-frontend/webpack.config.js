@@ -43,6 +43,8 @@ const {
   devserverPort = 9000,
   measure = false,
   analyzeBundle = false,
+  analyzerPort = 8888,
+  nameChunks = false,
 } = parsedArgs;
 const isDevMode = mode !== 'production';
 
@@ -112,14 +114,13 @@ const plugins = [
     checkSyntacticErrors: true,
   }),
 
-  new CopyPlugin(
-    [
+  new CopyPlugin({
+    patterns: [
       'package.json',
       { from: 'images', to: 'images' },
       { from: 'stylesheets', to: 'stylesheets' },
     ],
-    { copyUnmodified: true },
-  ),
+  }),
 ];
 if (!process.env.CI) {
   plugins.push(new webpack.ProgressPlugin());
@@ -177,12 +178,13 @@ const config = {
   entry: {
     theme: path.join(APP_DIR, '/src/theme.ts'),
     preamble: PREAMBLE,
-    addSlice: addPreamble('/src/addSlice/index.jsx'),
+    addSlice: addPreamble('/src/addSlice/index.tsx'),
     explore: addPreamble('/src/explore/index.jsx'),
     dashboard: addPreamble('/src/dashboard/index.jsx'),
-    sqllab: addPreamble('/src/SqlLab/index.jsx'),
-    welcome: addPreamble('/src/welcome/index.jsx'),
-    profile: addPreamble('/src/profile/index.jsx'),
+    sqllab: addPreamble('/src/SqlLab/index.tsx'),
+    crudViews: addPreamble('/src/views/index.tsx'),
+    menu: addPreamble('src/views/menu.tsx'),
+    profile: addPreamble('/src/profile/index.tsx'),
     showSavedQuery: [path.join(APP_DIR, '/src/showSavedQuery/index.jsx')],
   },
   output,
@@ -194,15 +196,64 @@ const config = {
     },
   },
   optimization: {
+    sideEffects: true,
     splitChunks: {
       chunks: 'all',
+      name: nameChunks,
       automaticNameDelimiter: '-',
       minChunks: 2,
       cacheGroups: {
-        default: false,
-        major: {
-          name: 'vendors-major',
-          test: /\/node_modules\/(brace|react|react-dom|@superset-ui\/translation|webpack.*|@babel.*)\//,
+        automaticNamePrefix: 'chunk',
+        // basic stable dependencies
+        vendors: {
+          priority: 50,
+          name: 'vendors',
+          test: new RegExp(
+            `/node_modules/(${[
+              'abortcontroller-polyfill',
+              'react',
+              'react-dom',
+              'prop-types',
+              'redux',
+              'react-redux',
+              'react-hot-loader',
+              'react-select',
+              'react-sortable-hoc',
+              'react-virtualized',
+              'react-table',
+              '@hot-loader.*',
+              'webpack.*',
+              '@?babel.*',
+              'lodash.*',
+              'antd',
+              '@ant-design.*',
+              '.*bootstrap',
+              'moment',
+              'jquery',
+              'core-js.*',
+              '@emotion.*',
+              'd3.*',
+            ].join('|')})/`,
+          ),
+        },
+        // bundle large libraries separately
+        brace: {
+          name: 'brace',
+          test: /\/node_modules\/(brace|react-ace)\//,
+          priority: 40,
+        },
+        mathjs: {
+          name: 'mathjs',
+          test: /\/node_modules\/mathjs\//,
+          priority: 30,
+          enforce: true,
+        },
+        // viz thumbnails are used in `addSlice` and `explore` page
+        thumbnail: {
+          name: 'thumbnail',
+          test: /thumbnail(Large)?\.png/i,
+          priority: 20,
+          enforce: true,
         },
       },
     },
@@ -212,6 +263,8 @@ const config = {
       src: path.resolve(APP_DIR, './src'),
       'react-dom': '@hot-loader/react-dom',
       stylesheets: path.resolve(APP_DIR, './stylesheets'),
+      images: path.resolve(APP_DIR, './images'),
+      spec: path.resolve(APP_DIR, './spec'),
     },
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
     symlinks: false,
@@ -228,6 +281,7 @@ const config = {
       },
       {
         test: /\.tsx?$/,
+        exclude: [/\.test.tsx?$/],
         use: [
           'thread-loader',
           babelLoader,
@@ -253,9 +307,13 @@ const config = {
       },
       {
         test: /\.jsx?$/,
-        // include source code for plugins, but exclude node_modules within them
-        exclude: [/superset-ui.*\/node_modules\//],
-        include: [new RegExp(`${APP_DIR}/src`), /superset-ui.*\/src/],
+        // include source code for plugins, but exclude node_modules and test files within them
+        exclude: [/superset-ui.*\/node_modules\//, /\.test.jsx?$/],
+        include: [
+          new RegExp(`${APP_DIR}/src`),
+          /superset-ui.*\/src/,
+          new RegExp(`${APP_DIR}/.storybook`),
+        ],
         use: [babelLoader],
       },
       {
@@ -286,11 +344,12 @@ const config = {
             loader: 'less-loader',
             options: {
               sourceMap: isDevMode,
+              javascriptEnabled: true,
             },
           },
         ],
       },
-      /* for css linking images */
+      /* for css linking images (and viz plugin thumbnails) */
       {
         test: /\.png$/,
         loader: 'url-loader',
@@ -298,6 +357,13 @@ const config = {
           limit: 10000,
           name: '[name].[hash:8].[ext]',
         },
+      },
+      {
+        test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
+        issuer: {
+          test: /\.(j|t)sx?$/,
+        },
+        use: ['@svgr/webpack'],
       },
       {
         test: /\.(jpg|gif)$/,
@@ -388,7 +454,7 @@ if (isDevMode) {
 // Pass flag --analyzeBundle=true to enable
 // e.g. npm run build -- --analyzeBundle=true
 if (analyzeBundle) {
-  config.plugins.push(new BundleAnalyzerPlugin());
+  config.plugins.push(new BundleAnalyzerPlugin({ analyzerPort }));
 }
 
 // Speed measurement is disabled by default

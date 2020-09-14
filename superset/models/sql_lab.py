@@ -17,9 +17,8 @@
 """A collection of ORM sqlalchemy models for SQL Lab"""
 import re
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-# pylint: disable=ungrouped-imports
 import simplejson as json
 import sqlalchemy as sqla
 from flask import Markup
@@ -40,6 +39,7 @@ from sqlalchemy.orm import backref, relationship
 from superset import security_manager
 from superset.models.helpers import AuditMixinNullable, ExtraJSONMixin
 from superset.models.tags import QueryUpdater
+from superset.sql_parse import CtasMethod, ParsedQuery, Table
 from superset.utils.core import QueryStatus, user_label
 
 
@@ -72,6 +72,7 @@ class Query(Model, ExtraJSONMixin):
     limit = Column(Integer)
     select_as_cta = Column(Boolean)
     select_as_cta_used = Column(Boolean, default=False)
+    ctas_method = Column(String(16), default=CtasMethod.TABLE)
 
     progress = Column(Integer, default=0)  # 1..100
     # # of rows in the result set or rows modified.
@@ -111,6 +112,7 @@ class Query(Model, ExtraJSONMixin):
             "errorMessage": self.error_message,
             "executedSql": self.executed_sql,
             "id": self.client_id,
+            "queryId": self.id,
             "limit": self.limit,
             "progress": self.progress,
             "rows": self.rows,
@@ -147,6 +149,15 @@ class Query(Model, ExtraJSONMixin):
     @property
     def username(self) -> str:
         return self.user.username
+
+    def raise_for_access(self) -> None:
+        """
+        Raise an exception if the user cannot access the resource.
+
+        :raises SupersetSecurityException: If the user cannot access the resource
+        """
+
+        security_manager.raise_for_access(query=self)
 
 
 class SavedQuery(Model, AuditMixinNullable, ExtraJSONMixin):
@@ -191,6 +202,10 @@ class SavedQuery(Model, AuditMixinNullable, ExtraJSONMixin):
 
     def url(self) -> str:
         return "/superset/sqllab?savedQueryId={0}".format(self.id)
+
+    @property
+    def sql_tables(self) -> List[Table]:
+        return list(ParsedQuery(self.sql).tables)
 
 
 class TabState(Model, AuditMixinNullable, ExtraJSONMixin):

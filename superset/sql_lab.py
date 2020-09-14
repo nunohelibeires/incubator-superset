@@ -19,33 +19,25 @@ import uuid
 from contextlib import closing
 from datetime import datetime
 from sys import getsizeof
-from typing import Any, cast, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
 import backoff
 import msgpack
 import pyarrow as pa
 import simplejson as json
-import sqlalchemy
 from celery.exceptions import SoftTimeLimitExceeded
 from celery.task.base import Task
-from contextlib2 import contextmanager
 from flask_babel import lazy_gettext as _
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.orm import Session
 
-from superset import (
-    app,
-    db,
-    results_backend,
-    results_backend_use_msgpack,
-    security_manager,
-)
+from superset import app, results_backend, results_backend_use_msgpack, security_manager
 from superset.dataframe import df_to_records
 from superset.db_engine_specs import BaseEngineSpec
 from superset.extensions import celery_app
 from superset.models.sql_lab import Query
 from superset.result_set import SupersetResultSet
 from superset.sql_parse import ParsedQuery
+from superset.utils.celery import session_scope
 from superset.utils.core import (
     json_iso_dttm_ser,
     QuerySource,
@@ -96,9 +88,9 @@ def handle_query_error(
 
 def get_query_backoff_handler(details: Dict[Any, Any]) -> None:
     query_id = details["kwargs"]["query_id"]
-    logger.error(f"Query with id `{query_id}` could not be retrieved")
+    logger.error("Query with id `%s` could not be retrieved", str(query_id))
     stats_logger.incr("error_attempting_orm_query_{}".format(details["tries"] - 1))
-    logger.error(f"Query {query_id}: Sleeping for a sec before retrying...")
+    logger.error("Query %s: Sleeping for a sec before retrying...", str(query_id))
 
 
 def get_query_giveup_handler(_: Any) -> None:
@@ -119,35 +111,6 @@ def get_query(query_id: int, session: Session) -> Query:
         return session.query(Query).filter_by(id=query_id).one()
     except Exception:
         raise SqlLabException("Failed at getting query")
-
-
-@contextmanager
-def session_scope(nullpool: bool) -> Iterator[Session]:
-    """Provide a transactional scope around a series of operations."""
-    database_uri = app.config["SQLALCHEMY_DATABASE_URI"]
-    if "sqlite" in database_uri:
-        logger.warning(
-            "SQLite Database support for metadata databases will be removed \
-            in a future version of Superset."
-        )
-    if nullpool:
-        engine = sqlalchemy.create_engine(database_uri, poolclass=NullPool)
-        session_class = sessionmaker()
-        session_class.configure(bind=engine)
-        session = session_class()
-    else:
-        session = db.session()
-        session.commit()  # HACK
-
-    try:
-        yield session
-        session.commit()
-    except Exception as ex:
-        session.rollback()
-        logger.exception(ex)
-        raise
-    finally:
-        session.close()
 
 
 @celery_app.task(
@@ -183,7 +146,6 @@ def get_sql_results(  # pylint: disable=too-many-arguments
                 log_params=log_params,
             )
         except Exception as ex:  # pylint: disable=broad-except
-            logger.error("Query %d", query_id)
             logger.debug("Query %d: %s", query_id, ex)
             stats_logger.incr("error_sqllab_unhandled")
             query = get_query(query_id, session)
@@ -223,7 +185,9 @@ def execute_sql_statement(
                 query.user_id, start_dttm.strftime("%Y_%m_%d_%H_%M_%S")
             )
         sql = parsed_query.as_create_table(
-            query.tmp_table_name, schema_name=query.tmp_schema_name
+            query.tmp_table_name,
+            schema_name=query.tmp_schema_name,
+            method=query.ctas_method,
         )
         query.select_as_cta_used = True
 
@@ -287,7 +251,7 @@ def execute_sql_statement(
 def _serialize_payload(
     payload: Dict[Any, Any], use_msgpack: Optional[bool] = False
 ) -> Union[bytes, str]:
-    logger.debug(f"Serializing to msgpack: {use_msgpack}")
+    logger.debug("Serializing to msgpack: %r", use_msgpack)
     if use_msgpack:
         return msgpack.dumps(payload, default=json_iso_dttm_ser, use_bin_type=True)
 
@@ -360,9 +324,9 @@ def execute_sql_statements(  # pylint: disable=too-many-arguments, too-many-loca
     # Breaking down into multiple statements
     parsed_query = ParsedQuery(rendered_query)
     statements = parsed_query.get_statements()
-    logger.info(f"Query {query_id}: Executing {len(statements)} statement(s)")
+    logger.info("Query %s: Executing %i statement(s)", str(query_id), len(statements))
 
-    logger.info(f"Query {query_id}: Set query to 'running'")
+    logger.info("Query %s: Set query to 'running'", str(query_id))
     query.status = QueryStatus.RUNNING
     query.start_running_time = now_as_float()
     session.commit()
@@ -386,7 +350,7 @@ def execute_sql_statements(  # pylint: disable=too-many-arguments, too-many-loca
 
                 # Run statement
                 msg = f"Running statement {i+1} out of {statement_count}"
-                logger.info(f"Query {query_id}: {msg}")
+                logger.info("Query %s: %s", str(query_id), msg)
                 query.set_extra_json_key("progress", msg)
                 session.commit()
                 try:
@@ -437,7 +401,9 @@ def execute_sql_statements(  # pylint: disable=too-many-arguments, too-many-loca
 
     if store_results and results_backend:
         key = str(uuid.uuid4())
-        logger.info(f"Query {query_id}: Storing results in results backend, key: {key}")
+        logger.info(
+            "Query %s: Storing results in results backend, key: %s", str(query_id), key
+        )
         with stats_timing("sqllab.query.results_backend_write", stats_logger):
             with stats_timing(
                 "sqllab.query.results_backend_write_serialization", stats_logger
@@ -451,9 +417,9 @@ def execute_sql_statements(  # pylint: disable=too-many-arguments, too-many-loca
 
             compressed = zlib_compress(serialized_payload)
             logger.debug(
-                f"*** serialized payload size: {getsizeof(serialized_payload)}"
+                "*** serialized payload size: %i", getsizeof(serialized_payload)
             )
-            logger.debug(f"*** compressed payload size: {getsizeof(compressed)}")
+            logger.debug("*** compressed payload size: %i", getsizeof(compressed))
             results_backend.set(key, compressed, cache_timeout)
         query.results_key = key
 
