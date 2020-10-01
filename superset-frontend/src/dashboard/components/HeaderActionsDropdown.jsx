@@ -146,7 +146,7 @@ class HeaderActionsDropdown extends React.PureComponent {
 
     return (
       <DropdownButton
-        title={<Icon name="more" />}
+        title={<Icon name="more-horiz" />}
         noCaret
         id="save-dash-split-button"
         bsSize="small"
@@ -224,6 +224,25 @@ class HeaderActionsDropdown extends React.PureComponent {
         {!editMode && (
           <MenuItem onClick={downloadAsImage('.dashboard', dashboardTitle)}>
             {t('Download as image')}
+          </MenuItem>
+        )}
+
+        {!editMode && (
+          <MenuItem
+            onClick={() => {
+              const hasStandalone = window.location.search.includes(
+                'standalone=true',
+              );
+              const url = getDashboardUrl(
+                window.location.pathname,
+                getActiveFilters(),
+                window.location.hash,
+                !hasStandalone,
+              );
+              window.location.replace(url);
+            }}
+          >
+            {t('Toggle FullScreen')}
           </MenuItem>
         )}
       </DropdownButton>

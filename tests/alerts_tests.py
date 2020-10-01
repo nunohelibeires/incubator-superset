@@ -128,11 +128,11 @@ def test_alert_observer(setup_database):
     assert alert3.sql_observer[0].observations[-1].value is None
     assert alert3.sql_observer[0].observations[-1].error_msg is None
 
-    # Test SQLObserver with empty SQL return
+    # Test SQLObserver with empty SQL return, expected
     alert4 = create_alert(dbsession, "SELECT first FROM test_table WHERE first = -1")
     observe(alert4.id, dbsession)
     assert alert4.sql_observer[0].observations[-1].value is None
-    assert alert4.sql_observer[0].observations[-1].error_msg is not None
+    assert alert4.sql_observer[0].observations[-1].error_msg is None
 
     # Test SQLObserver with str result
     alert5 = create_alert(dbsession, "SELECT 'test_string' as string_value")
@@ -153,6 +153,27 @@ def test_alert_observer(setup_database):
     observe(alert7.id, dbsession)
     assert alert7.sql_observer[0].observations[-1].value is None
     assert alert7.sql_observer[0].observations[-1].error_msg is not None
+
+    # Test multiline SQLObserver
+    alert8 = create_alert(
+        dbsession,
+        """
+        -- comment
+        SELECT
+            1 -- comment
+        FROM test_table
+            WHERE first = 1
+        """,
+    )
+    observe(alert8.id, dbsession)
+    assert alert8.sql_observer[0].observations[-1].value == 1.0
+    assert alert8.sql_observer[0].observations[-1].error_msg is None
+
+    # Test jinja
+    alert9 = create_alert(dbsession, "SELECT {{ 2 }}")
+    observe(alert9.id, dbsession)
+    assert alert9.sql_observer[0].observations[-1].value == 2.0
+    assert alert9.sql_observer[0].observations[-1].error_msg is None
 
 
 @patch("superset.tasks.schedules.deliver_alert")
@@ -236,6 +257,11 @@ def test_operator_validator(setup_database):
     observe(alert1.id, dbsession)
     assert (
         operator_validator(alert1.sql_observer[0], '{"op": ">=", "threshold": 60}')
+        is False
+    )
+    # ensure that 0 threshold works
+    assert (
+        operator_validator(alert1.sql_observer[0], '{"op": ">=", "threshold": 0}')
         is False
     )
 
@@ -330,7 +356,7 @@ def test_deliver_alert_screenshot(
         "initial_comment": f"\n*Triggered Alert: {alert.label} :redalert:*\n"
         f"*Query*:```{alert.sql_observer[0].sql}```\n"
         f"*Result*: {alert.observations[-1].value}\n"
-        f"*Reason*: {alert.observations[-1].value} {alert.validators[0].pretty_print()}\n"
+        f"*Reason*: {alert.observations[-1].value} {alert.validators[0].pretty_config}\n"
         f"<http://0.0.0.0:8080/alert/show/{alert.id}"
         f"|View Alert Details>\n<http://0.0.0.0:8080/superset/slice/{alert.slice_id}/"
         "|*Explore in Superset*>",

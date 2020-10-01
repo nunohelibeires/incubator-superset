@@ -19,7 +19,6 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import {
-  Label,
   Row,
   Col,
   FormControl,
@@ -29,6 +28,7 @@ import {
 } from 'react-bootstrap';
 import { t, getChartMetadataRegistry } from '@superset-ui/core';
 
+import Label from 'src/components/Label';
 import ControlHeader from '../ControlHeader';
 import './VizTypeControl.less';
 
@@ -120,7 +120,7 @@ export default class VizTypeControl extends React.PureComponent {
   }
 
   toggleModal() {
-    this.setState({ showModal: !this.state.showModal });
+    this.setState(prevState => ({ showModal: !prevState.showModal }));
   }
 
   changeSearch(event) {

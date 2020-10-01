@@ -325,17 +325,11 @@ For example, the image referenced above actually lives in `superset-frontend/ima
 
 Make sure your machine meets the [OS dependencies](https://superset.incubator.apache.org/installation.html#os-dependencies) before following these steps.
 
-Developers should use a virtualenv.
-
-```bash
-pip install virtualenv
-```
-
-Then proceed with:
+Ensure Python versions >3.7, Then proceed with:
 
 ```bash
 # Create a virtual environemnt and activate it (recommended)
-virtualenv -p python3 venv # setup a python3.6 virtualenv
+python3 -m venv venv # setup a python3 virtualenv
 source venv/bin/activate
 
 # Install external dependencies
@@ -613,6 +607,7 @@ We use [Cypress](https://www.cypress.io/) for integration tests. Tests can be ru
 
 ```bash
 export SUPERSET_CONFIG=tests.superset_test_config
+export CYPRESS_BASE_URL="http://localhost:8081"
 superset db upgrade
 superset init
 superset load_test_users
@@ -638,6 +633,10 @@ npm run cypress run -- --spec cypress/integration/dashboard/index.test.js --conf
 
 # to open the cypress ui
 npm run cypress open
+
+# to point cypress to a url other than the default (http://localhost:8088) set the environment variable before running the script
+# e.g., CYPRESS_BASE_URL="http://localhost:9000"
+CYPRESS_BASE_URL=<your url> npm run cypress open
 ```
 
 See [`superset-frontend/cypress_build.sh`](https://github.com/apache/incubator-superset/blob/master/superset-frontend/cypress_build.sh).
@@ -648,7 +647,7 @@ Superset includes a [Storybook](https://storybook.js.org/) to preview the layout
 
 ```bash
 cd superset-frontend
-npm run storybool
+npm run storybook
 ```
 
 When contributing new React components to Superset, please try to add a Story alongside the component's `jsx/tsx` file.

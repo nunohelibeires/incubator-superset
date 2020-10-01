@@ -271,7 +271,7 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
                   className="action-button"
                   href={original.explore_url}
                 >
-                  <Icon name="compass" />
+                  <Icon name="nav-explore" />
                 </a>
               </TooltipWrapper>
               {canDelete && (
@@ -303,7 +303,7 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
                     className="action-button"
                     onClick={handleEdit}
                   >
-                    <Icon name="pencil" />
+                    <Icon name="edit-alt" />
                   </span>
                 </TooltipWrapper>
               )}
@@ -539,13 +539,15 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
 
                 if (!selected.length) {
                   return t('0 Selected');
-                } else if (virtualCount && !physicalCount) {
+                }
+                if (virtualCount && !physicalCount) {
                   return t(
                     '%s Selected (Virtual)',
                     selected.length,
                     virtualCount,
                   );
-                } else if (physicalCount && !virtualCount) {
+                }
+                if (physicalCount && !virtualCount) {
                   return t(
                     '%s Selected (Physical)',
                     selected.length,

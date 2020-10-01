@@ -187,8 +187,8 @@ export function Menu({
         </Nav>
         <Nav className="navbar-right">
           {!navbarRight.user_is_anonymous && <NewMenu />}
-          {settings && settings.length && (
-            <NavDropdown id={`settings-dropdown`} title="Settings">
+          {settings && settings.length > 0 && (
+            <NavDropdown id="settings-dropdown" title="Settings">
               {flatSettings.map((section, index) => {
                 if (section === '-') {
                   return (
@@ -199,7 +199,8 @@ export function Menu({
                       className="settings-divider"
                     />
                   );
-                } else if (section.isHeader) {
+                }
+                if (section.isHeader) {
                   return (
                     <MenuItem key={`${section.label}`} disabled>
                       {section.label}
@@ -276,11 +277,6 @@ export default function MenuWrapper({ data }: MenuProps) {
     Manage: true,
   };
 
-  // Menu items that should be ignored
-  const ignore = {
-    'Import Dashboards': true,
-  };
-
   // Cycle through menu.menu to build out cleanedMenu and settings
   const cleanedMenu: MenuObjectProps[] = [];
   const settings: MenuObjectProps[] = [];
@@ -300,10 +296,7 @@ export default function MenuWrapper({ data }: MenuProps) {
       item.childs.forEach((child: MenuObjectChildProps | string) => {
         if (typeof child === 'string') {
           children.push(child);
-        } else if (
-          (child as MenuObjectChildProps).label &&
-          !ignore.hasOwnProperty(child.label)
-        ) {
+        } else if ((child as MenuObjectChildProps).label) {
           children.push(child);
         }
       });

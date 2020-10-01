@@ -19,9 +19,9 @@
 /* eslint camelcase: 0 */
 import { t, SupersetClient } from '@superset-ui/core';
 
-import { addDangerToast } from '../../messageToasts/actions';
-import { getDatasourceParameter } from '../../modules/utils';
-import getClientErrorObject from '../../utils/getClientErrorObject';
+import { addDangerToast } from 'src/messageToasts/actions';
+import { getDatasourceParameter } from 'src/modules/utils';
+import getClientErrorObject from 'src/utils/getClientErrorObject';
 
 export const SET_ALL_SLICES = 'SET_ALL_SLICES';
 export function setAllSlices(slices) {
@@ -51,7 +51,7 @@ export function fetchAllSlices(userId) {
           const slices = {};
           json.result.forEach(slice => {
             let form_data = JSON.parse(slice.params);
-            let datasource = form_data.datasource;
+            let { datasource } = form_data;
             if (!datasource) {
               datasource = getDatasourceParameter(
                 slice.datasource_id,

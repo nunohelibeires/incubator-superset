@@ -66,7 +66,7 @@ import {
   ColumnOption,
 } from '@superset-ui/core';
 
-import { formatSelectOptions, mainMetric } from '../modules/utils';
+import { formatSelectOptions, mainMetric } from 'src/modules/utils';
 import { TIME_FILTER_LABELS } from './constants';
 
 const categoricalSchemeRegistry = getCategoricalSchemeRegistry();
@@ -160,7 +160,7 @@ const metrics = {
     return metric ? [metric] : null;
   },
   mapStateToProps: state => {
-    const datasource = state.datasource;
+    const { datasource } = state;
     return {
       columns: datasource ? datasource.columns : [],
       savedMetrics: datasource ? datasource.metrics : [],
@@ -501,4 +501,3 @@ export const controls = {
     }),
   },
 };
-export default controls;

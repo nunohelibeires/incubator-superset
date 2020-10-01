@@ -27,7 +27,6 @@ from unittest.mock import Mock, patch
 
 import numpy
 from flask import Flask, g
-from flask_caching import Cache
 import marshmallow
 from sqlalchemy.exc import ArgumentError
 
@@ -37,7 +36,6 @@ from superset.exceptions import CertificateException, SupersetException
 from superset.models.core import Database, Log
 from superset.models.dashboard import Dashboard
 from superset.models.slice import Slice
-from superset.utils.cache_manager import CacheManager
 from superset.utils.core import (
     base_json_conv,
     cast_to_num,
@@ -69,6 +67,7 @@ from superset.utils.core import (
 from superset.utils import schema
 from superset.views.utils import (
     build_extra_filters,
+    get_dashboard_changedon_dt,
     get_form_data,
     get_time_range_endpoints,
 )
@@ -834,32 +833,6 @@ class TestUtils(SupersetTestCase):
         self.assertIsNone(parse_js_uri_path_item(None))
         self.assertIsNotNone(parse_js_uri_path_item("item"))
 
-    def test_setup_cache_null_config(self):
-        app = Flask(__name__)
-        cache_config = {"CACHE_TYPE": "null"}
-        assert isinstance(CacheManager._setup_cache(app, cache_config), Cache)
-
-    def test_setup_cache_standard_config(self):
-        app = Flask(__name__)
-        cache_config = {
-            "CACHE_TYPE": "redis",
-            "CACHE_DEFAULT_TIMEOUT": 60,
-            "CACHE_KEY_PREFIX": "superset_results",
-            "CACHE_REDIS_URL": "redis://localhost:6379/0",
-        }
-        assert isinstance(CacheManager._setup_cache(app, cache_config), Cache) is True
-
-    def test_setup_cache_custom_function(self):
-        app = Flask(__name__)
-        CustomCache = type("CustomCache", (object,), {"__init__": lambda *args: None})
-
-        def init_cache(app):
-            return CustomCache(app, {})
-
-        assert (
-            isinstance(CacheManager._setup_cache(app, init_cache), CustomCache) is True
-        )
-
     def test_get_stacktrace(self):
         with app.app_context():
             app.config["SHOW_STACKTRACE"] = True
@@ -1162,3 +1135,14 @@ class TestUtils(SupersetTestCase):
         assert get_form_data_token({"token": "token_abcdefg1"}) == "token_abcdefg1"
         generated_token = get_form_data_token({})
         assert re.match(r"^token_[a-z0-9]{8}$", generated_token) is not None
+
+    def test_get_dashboard_changedon_dt(self) -> None:
+        slug = "world_health"
+        dashboard = db.session.query(Dashboard).filter_by(slug=slug).one()
+        dashboard_last_changedon = dashboard.changed_on
+        slices = dashboard.slices
+        slices_last_changedon = max([slc.changed_on for slc in slices])
+        # drop microsecond in datetime
+        assert get_dashboard_changedon_dt(self, slug) == max(
+            dashboard_last_changedon, slices_last_changedon
+        ).replace(microsecond=0)
